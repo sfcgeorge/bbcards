@@ -127,7 +127,7 @@ def draw_logos(pdf, card_geometry, icon)
       pdf.font_size = 14
       pdf.line_width(0.5)
       pdf.text_box "Devops Against Humanity", size: 6, align: :left, width: 200,
-                           at: [pdf.bounds.left+20, pdf.bounds.bottom+SAFE_MARGIN]
+                           at: [pdf.bounds.left+SAFE_MARGIN-20, pdf.bounds.bottom+SAFE_MARGIN]
 		end
 		idx = idx + 1
 	end
