@@ -101,7 +101,7 @@ def draw_grid(pdf, card_geometry)
 	end
 end
 
-SAFE_MARGIN = (MM_PER_INCH*0.24).mm
+SAFE_MARGIN = (MM_PER_INCH*0.24 + 4).mm
 
 def box(pdf, card_geometry, index, &blck)
 	# Determine row + column number
@@ -115,19 +115,17 @@ def box(pdf, card_geometry, index, &blck)
 	pdf.bounding_box([x,y], width: card_geometry["card_width"]-SAFE_MARGIN*2, height: card_geometry["card_height"]-SAFE_MARGIN*2, &blck)
 end
 
-def draw_logos(pdf, card_geometry, icon)
+def draw_logos(pdf, card_geometry, icon, deck_name)
 	idx=0
 	while idx < card_geometry["cards_across"] * card_geometry["cards_high"]
 		box(pdf, card_geometry, idx) do
-			logo_max_height = 15
+			logo_max_height = 12
 			logo_max_width = card_geometry["card_width"]/2
 			pdf.image icon, fit: [logo_max_width, logo_max_height],
-                      at: [pdf.bounds.left, pdf.bounds.bottom+SAFE_MARGIN]
+                      at: [pdf.bounds.left, pdf.bounds.bottom+logo_max_height]
       pdf.font "Helvetica", :style => :normal
-      pdf.font_size = 14
-      pdf.line_width(0.5)
-      pdf.text_box "Devops Against Humanity", size: 6, align: :left, width: 200,
-                           at: [pdf.bounds.left+SAFE_MARGIN-20, pdf.bounds.bottom+SAFE_MARGIN]
+      pdf.text_box deck_name, size: 6, align: :left, width: 200,
+                           at: [pdf.bounds.left+15, pdf.bounds.bottom+8]
 		end
 		idx = idx + 1
 	end
@@ -136,7 +134,7 @@ end
 
 
 
-def render_card_page(pdf, card_geometry, icon, statements, is_black)
+def render_card_page(pdf, card_geometry, icon, deck_name, statements, is_black)
 
 	pdf.font "Helvetica", :style => :normal
 	pdf.font_size = 14
@@ -332,7 +330,7 @@ def render_card_page(pdf, card_geometry, icon, statements, is_black)
 			end
 		end
 	end
-	draw_logos(pdf, card_geometry, icon)
+	draw_logos(pdf, card_geometry, icon, deck_name)
 	pdf.stroke_color "000000"
 	pdf.fill_color "000000"
 
@@ -441,7 +439,7 @@ def load_ttf_fonts(font_dir, font_families)
 end
 
 
-def render_cards(directory=".", white_file="white.txt", black_file="black.txt", icon_file="icon.png", output_file="cards.pdf", input_files_are_absolute=false, output_file_name_from_directory=true, recurse=true, card_geometry=get_card_geometry, white_string="", black_string="", output_to_stdout=false, title=nil )
+def render_cards(directory=".", white_file="white.txt", black_file="black.txt", icon_file="icon.png", deck_name="Bigger Blacker Cards", output_file="cards.pdf", input_files_are_absolute=false, output_file_name_from_directory=true, recurse=true, card_geometry=get_card_geometry, white_string="", black_string="", output_to_stdout=false, title=nil )
 
 	original_white_file = white_file
 	original_black_file = black_file
@@ -449,9 +447,17 @@ def render_cards(directory=".", white_file="white.txt", black_file="black.txt", 
 	if not input_files_are_absolute
 		white_file = directory + File::Separator + white_file
 		black_file = directory + File::Separator + black_file
+		black_icon_file  = directory + File::Separator + 'black_' + icon_file
+		white_icon_file  = directory + File::Separator + 'white_' + icon_file
 		icon_file  = directory + File::Separator + icon_file
 	end
 
+	unless File.exist? black_icon_file
+		black_icon_file = "./default.png"
+	end
+	unless File.exist? white_icon_file
+		white_icon_file = "./default.png"
+	end
 	if not File.exist? icon_file
 		icon_file = "./default.png"
 	end
@@ -484,7 +490,7 @@ def render_cards(directory=".", white_file="white.txt", black_file="black.txt", 
 	end
 	if black_string != "" || black_file == nil
 		black_pages = load_pages_from_string(black_string, card_geometry)
-	else
+  else
 		black_pages = load_pages_from_file(black_file, card_geometry)
 	end
 
@@ -503,12 +509,12 @@ def render_cards(directory=".", white_file="white.txt", black_file="black.txt", 
 
 
 		white_pages.each_with_index do |statements, page|
-			render_card_page(pdf, card_geometry, icon_file, statements, false)
+			render_card_page(pdf, card_geometry, white_icon_file, deck_name, statements, false)
 			pdf.start_new_page unless page >= white_pages.length-1
 		end
 		pdf.start_new_page unless white_pages.length == 0 || black_pages.length == 0
 		black_pages.each_with_index do |statements, page|
-			render_card_page(pdf, card_geometry, icon_file, statements, true)
+			render_card_page(pdf, card_geometry, black_icon_file, deck_name, statements, true)
 			pdf.start_new_page unless page >= black_pages.length-1
 		end
 
@@ -525,7 +531,7 @@ def render_cards(directory=".", white_file="white.txt", black_file="black.txt", 
 		files_in_dir =Dir.glob(directory + File::Separator + "*")
 		files_in_dir.each do |subdir|
 			if File.directory? subdir
-				render_cards(subdir, original_white_file, original_black_file, original_icon_file, "irrelevant", false, true, true, card_geometry )
+				render_cards(subdir, original_white_file, original_black_file, original_icon_file, deck_name, "irrelevant", false, true, true, card_geometry )
 			end
 		end
 	end
@@ -654,6 +660,8 @@ else
 	arg_defs["--icon"]      = "icon"
 	arg_defs["-o"]          = "output"
 	arg_defs["-output"]     = "output"
+	arg_defs["-n"]          = "name"
+	arg_defs["-name"]       = "name"
 
 	flag_defs["-s"]            = "small"
 	flag_defs["--small"]       = "small"
@@ -673,12 +681,14 @@ else
 		card_geometry = get_card_geometry(2.74,3.74, (not (args["rounded"]).nil?), (not (args["oneperpage"]).nil? ))
 	end
 
+  name = args["name"] || "Bigger Blacker Cards"
+
 	if args.has_key? "help" or args.length == 0 or ( (not args.has_key? "white") and (not args.has_key? "black") and (not args.has_key? "dir") )
 		print_help
 	elsif args.has_key? "dir"
-		render_cards args["dir"], "white.txt", "black.txt", "icon.png", "cards.pdf", false, true, true, card_geometry, "", "", false
+		render_cards args["dir"], "white.txt", "black.txt", "icon.png", name, "cards.pdf", false, true, true, card_geometry, "", "", false
 	else
-		render_cards nil, args["white"], args["black"], args["icon"], args["output"], true, false, false, card_geometry, "", "", false
+		render_cards nil, args["white"], args["black"], args["icon"], name, args["output"], true, false, false, card_geometry, "", "", false
 	end
 end
 exit
